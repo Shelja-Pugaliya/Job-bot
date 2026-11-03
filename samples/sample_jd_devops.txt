@@ -1,0 +1,35 @@
+Northwind Payments — DevOps Engineer (Mid-level)
+Dublin, Ireland · Hybrid (3 days in office) · €55,000 – €70,000
+
+About us
+Northwind Payments is a fictional Dublin-based fintech used here as a test job description. We process card payments for 4,000 Irish and UK merchants.
+
+The role
+You will join our 6-person Platform team to keep our payment APIs fast, observable and safe to deploy. You'll own CI/CD pipelines, help run our AWS infrastructure, and take part in an on-call rotation.
+
+What you'll do
+- Build and maintain CI/CD pipelines (GitHub Actions or Jenkins) with automated testing and quality gates
+- Manage AWS infrastructure (EC2, VPC, IAM, S3, Lambda) using Terraform
+- Run containerised services on Kubernetes (EKS) with Helm
+- Build monitoring and alerting with Prometheus and Grafana; define SLOs
+- Respond to production incidents, lead root cause analysis and write post-mortems
+- Automate operational tasks with Bash and Python
+- Work with developers to improve release processes and developer experience
+
+What we're looking for
+- 3–5 years' experience in DevOps, SRE or platform engineering
+- Strong Linux and shell scripting skills
+- Hands-on experience with CI/CD tools (GitHub Actions, Jenkins)
+- Experience with Docker and Kubernetes
+- Infrastructure as Code with Terraform
+- Experience with AWS
+- Monitoring and observability tools (Prometheus, Grafana, ELK)
+- Good understanding of networking (DNS, TCP/IP, HTTP) and security basics
+
+Nice to have
+- Experience in payments or other regulated industries
+- Python scripting
+- Experience with ArgoCD / GitOps
+- AWS certification
+
+Must be eligible to work in Ireland. We do not offer visa sponsorship for this role.
