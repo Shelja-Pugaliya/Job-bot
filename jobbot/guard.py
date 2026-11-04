@@ -19,6 +19,69 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9+#]", "", s.lower())
 
 
+def add_gap_skills(tailored: dict, gaps: list[dict], mode: str) -> list[str]:
+    """Put the JD's listable gap skills into the Skills section (user's rule, 2026-11-04).
+    Never touches bullets. Returns the keywords added."""
+    if mode == "off":
+        return []
+    cv_text = " ".join(i for g in tailored["skills"] for i in g["items"]).lower()
+    todo = []
+    for g in gaps:
+        kw = (g.get("cv_keyword") or re.sub(r"\s*\(.*?\)", "", g["skill"])).strip()
+        if g.get("cv_listable", True) and kw and kw.lower() not in cv_text and kw not in todo:
+            todo.append(kw)
+    if not todo:
+        return []
+    if mode == "learning":
+        tailored["skills"].append({"category": "Currently Learning", "items": todo})
+        return todo
+    for kw in todo:
+        # best-fitting line = most shared words with the category name and its items,
+        # then a topic hint (Kubernetes -> an Infrastructure/Cloud line), then a catch-all line
+        kt = _tokens(kw)
+        best = max(tailored["skills"], key=lambda grp: len(kt & _tokens(grp["category"] + " " + " ".join(grp["items"]))),
+                   default=None)
+        if best is None or not (kt & _tokens(best["category"] + " " + " ".join(best["items"]))):
+            best = _by_hint(kw, tailored["skills"])
+        if best is None:
+            best = next((grp for grp in tailored["skills"] if grp["category"] == "Tools & Platforms"), None)
+            if best is None:
+                best = {"category": "Tools & Platforms", "items": []}
+                tailored["skills"].append(best)
+        best["items"].append(kw)
+    return todo
+
+
+_HINTS = [  # (pattern on the skill, words to look for in category names, in preference order)
+    (r"kubernetes|helm|terraform|argo|eks|gke|openshift|nginx|load bal|serverless|lambda|cloudformation|pulumi",
+     ["infrastructure", "cloud", "container", "devops", "platform"]),
+    (r"redis|valkey|postgres|mysql|snowflake|dbt|kafka|spark|airflow|bigquery|elasticsearch",
+     ["database", "data", "infrastructure"]),
+    (r"ssl|tls|firewall|subnet|network|vpn|dns|siem|iam|sso|mfa|zero trust",
+     ["network", "security", "infrastructure"]),
+    (r"prometheus|opentelemetry|datadog|splunk|new relic|elk|loki|tracing",
+     ["observability", "monitoring"]),
+    (r"llm|rag|vector|langchain|openai|claude|hugging|pytorch|tensorflow|scikit|ml",
+     ["ai", "machine learning", "ml", "data"]),
+    (r"graphql|grpc|api|webhook",
+     ["api", "integration"]),
+    (r"go\b|golang|rust|java\b|kotlin|ruby|scala|c\+\+",
+     ["language", "programming"]),
+    (r"jest|cypress|playwright|selenium|pytest|junit",
+     ["test", "ci/cd", "quality"]),
+]
+
+
+def _by_hint(kw: str, groups: list[dict]):
+    for pattern, words in _HINTS:
+        if re.search(pattern, kw, re.I):
+            for w in words:
+                g = next((grp for grp in groups if w in grp["category"].lower()), None)
+                if g:
+                    return g
+    return None
+
+
 _STOP = {"and", "or", "the", "of", "with", "in", "for", "a", "to", "&"}
 
 
@@ -28,8 +91,17 @@ def _tokens(s: str) -> set[str]:
 
 def _mentions(text: str, term: str) -> bool:
     # match the core of the gap name, e.g. "Terraform (IaC)" -> "terraform"
-    core = re.split(r"[(/]", term)[0].strip()
-    return bool(core) and re.search(rf"(?<![\w]){re.escape(core)}(?![\w])", text, re.I) is not None
+    core = re.sub(r"\s+", " ", re.sub(r"\(.*?\)", "", term)).strip()
+    # "A/B testing" stays whole; "Kubernetes (hands-on) / Helm" -> "Kubernetes" or "Helm"
+    parts = [p.strip() for p in core.split(" / ")] if " / " in core else [core]
+    for p in parts:
+        if not p:
+            continue
+        # short names like "Go" must match case-sensitively so the verb "go" doesn't count
+        flags = re.I if len(p) >= 3 else 0
+        if re.search(rf"(?<![\w]){re.escape(p)}(?![\w])", text, flags):
+            return True
+    return False
 
 
 def check(tailored: dict, bullet_idx: dict, skill_names: list[str], gap_skills: list[str]) -> list[str]:

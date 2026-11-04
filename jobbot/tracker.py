@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   match_score INTEGER, status TEXT, folder TEXT, found_at TEXT, updated_at TEXT, notes TEXT
 )"""
 
-STATUSES = ["found", "skipped", "tailored", "review", "applied", "rejected", "interview", "offer"]
+STATUSES = ["found", "ranked", "skipped", "tailored", "review", "applied", "rejected", "interview", "offer"]
+_ADDED_COLUMNS = {"analysis": "TEXT", "dealbreaker": "TEXT", "years_required": "INTEGER"}
 
 
 def db() -> sqlite3.Connection:
@@ -22,7 +23,25 @@ def db() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     con.execute(_SCHEMA)
+    have = {r["name"] for r in con.execute("PRAGMA table_info(jobs)")}
+    for col, typ in _ADDED_COLUMNS.items():
+        if col not in have:
+            con.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typ}")
     return con
+
+
+def to_rank(limit: int) -> list[sqlite3.Row]:
+    """Unanalyzed jobs, best pre-score first."""
+    with db() as con:
+        return con.execute("SELECT * FROM jobs WHERE status='found' ORDER BY prescore DESC, posted DESC LIMIT ?",
+                           (limit,)).fetchall()
+
+
+def best_ranked(limit: int) -> list[sqlite3.Row]:
+    """Analyzed, not yet tailored, no dealbreaker: best real match score first."""
+    with db() as con:
+        return con.execute("SELECT * FROM jobs WHERE status='ranked' ORDER BY match_score DESC, posted DESC LIMIT ?",
+                           (limit,)).fetchall()
 
 
 def add_found(jobs: list[dict]) -> set[str]:
@@ -33,9 +52,11 @@ def add_found(jobs: list[dict]) -> set[str]:
         new = [j for j in jobs if j["id"] not in seen]
         con.executemany(
             "INSERT INTO jobs (id, source, company, title, location, url, posted, description, prescore,"
-            " senior, track, status, found_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, 'found', ?, ?)",
+            " senior, track, years_required, status, found_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'found', ?, ?)",
             [(j["id"], j["source"], j["company"], j["title"], j["location"], j["url"], j["posted"],
-              j["description"], j["prescore"], int(j["senior"]), j["track"], now, now) for j in new])
+              j["description"], j["prescore"], int(j["senior"]), j["track"], j["years_required"], now, now)
+             for j in new])
     return {j["id"] for j in new}
 
 
@@ -51,6 +72,13 @@ def update(job_id: str, **fields) -> None:
     cols = ", ".join(f"{k}=?" for k in fields)
     with db() as con:
         con.execute(f"UPDATE jobs SET {cols} WHERE id=?", (*fields.values(), job_id))
+
+
+def all_jobs(status: str | None = None) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM jobs" + (" WHERE status=?" if status else "") + \
+          " ORDER BY COALESCE(match_score, prescore) DESC, posted DESC"
+    with db() as con:
+        return con.execute(sql, (status,) if status else ()).fetchall()
 
 
 def counts() -> dict[str, int]:

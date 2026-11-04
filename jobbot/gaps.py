@@ -6,6 +6,7 @@ from .config import GAPS_PATH
 _yaml = YAML()
 _yaml.preserve_quotes = True
 _yaml.width = 4096
+_yaml.indent(mapping=2, sequence=4, offset=2)  # match the hand-written file's layout
 
 
 def _key(name: str) -> str:

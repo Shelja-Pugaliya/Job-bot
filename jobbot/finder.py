@@ -13,7 +13,7 @@ from dataclasses import dataclass, asdict
 
 import yaml
 
-from .config import ROOT
+from .config import ROOT, MAX_YEARS
 from .profile import load_master, verified_view, verified_skill_names
 from . import tracker
 
@@ -48,6 +48,27 @@ TRACK_HINTS = {
 }
 
 
+_WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+             "nine": 9, "ten": 10, "twelve": 12, "fifteen": 15}
+_YEARS = re.compile(r"\b(\d{1,2}|" + "|".join(_WORD_NUM) + r")\s*(?:\+|plus)?\s*"
+                    r"(?:(?:-|–|to)\s*\d{1,2}\s*)?\+?\s*years?\b", re.I)
+
+
+def years_required(text: str) -> int:
+    """Highest minimum years of experience the JD asks for (0 if it doesn't say).
+    '3-5 years' counts as 3; '5+ years' as 5. Only counts mentions near the word 'experience'."""
+    found = []
+    for m in _YEARS.finditer(text):
+        ctx = text[max(0, m.start() - 60): m.end() + 80].lower()
+        if "experience" not in ctx and "exp." not in ctx:
+            continue
+        raw = m.group(1).lower()
+        n = _WORD_NUM.get(raw) or int(raw)
+        if 1 <= n <= 20:
+            found.append(n)
+    return max(found, default=0)
+
+
 @dataclass
 class Job:
     id: str
@@ -61,6 +82,7 @@ class Job:
     prescore: int = 0
     senior: bool = False
     track: str = ""
+    years_required: int = 0
 
 
 def _get(url: str):
@@ -174,11 +196,15 @@ def find(verbose: bool = True) -> list[Job]:
     view = verified_view(load_master())
     patterns = _skill_patterns(verified_skill_names(view))
 
-    kept = []
+    kept, too_senior = [], 0
     for j in all_jobs:
         if not _location_ok(j.location):
             continue
         if not TITLE_INCLUDE.search(j.title) or TITLE_EXCLUDE.search(j.title):
+            continue
+        j.years_required = years_required(j.description)
+        if j.years_required > MAX_YEARS:
+            too_senior += 1
             continue
         j.senior = bool(SENIOR.search(j.title))
         j.track = _track(j.title)
@@ -188,7 +214,8 @@ def find(verbose: bool = True) -> list[Job]:
     new = tracker.add_found([asdict(j) for j in kept])
     if verbose:
         print(f"Boards: {len(boards)} ({len(errors)} failed) · jobs fetched: {len(all_jobs)} · "
-              f"Ireland/remote-EU + relevant title: {len(kept)} · new since last run: {len(new)}")
+              f"fit (Ireland/remote-EU, title, ≤{MAX_YEARS} yrs): {len(kept)} · "
+              f"skipped for >{MAX_YEARS} yrs: {too_senior} · new since last run: {len(new)}")
         for e in errors:
             print("  !", e)
     return [j for j in kept if j.id in new]
