@@ -18,7 +18,7 @@ SCHEMA = {
         "company": {"type": "string"},
         "role_title": {"type": "string"},
         "location": {"type": "string"},
-        "seniority": {"type": "string", "enum": ["junior", "mid", "senior", "lead", "unclear"]},
+        "seniority": {"type": "string", "enum": ["junior", "mid", "senior", "unclear"]},
         "work_mode": {"type": "string", "enum": ["remote", "hybrid", "onsite", "unclear"]},
         "salary_text": {"type": "string", "description": "Salary as stated in the JD, or empty string."},
         "track": {"type": "string", "enum": TRACKS},

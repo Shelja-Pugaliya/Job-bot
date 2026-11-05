@@ -17,7 +17,8 @@ from datetime import date
 from pathlib import Path
 
 from . import analyze as analyze_mod, gaps, guard, render, tailor as tailor_mod, tracker
-from .config import OUTPUT_DIR, REVIEW_TOP, RANK_POOL, DAILY_APPLY, MAX_YEARS, GAP_SKILLS_IN_CV
+from .config import (OUTPUT_DIR, REVIEW_TOP, RANK_POOL, DAILY_APPLY, MAX_YEARS, GAP_SKILLS_IN_CV,
+                     AUTO_SUBMIT)
 from .profile import load_master, load_gaps, verified_view, bullet_index, verified_skill_names
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -244,6 +245,25 @@ def cmd_apply(query: str, submit: bool, headed: bool) -> None:
                        notes="; ".join(res["notes"]) or "submitted")
 
 
+def cmd_apply_queue(limit: int = DAILY_APPLY) -> None:
+    """Apply to the auto-submit queue (status 'tailored'). Submits only if JOBBOT_AUTO_SUBMIT=true.
+    Review jobs (your top 3) are never auto-submitted: use `apply "<job>" --submit` after reviewing."""
+    with tracker.db() as con:
+        rows = con.execute("SELECT id, source, company, title, url FROM jobs WHERE status='tailored' "
+                           "ORDER BY match_score DESC LIMIT ?", (limit,)).fetchall()
+    print(f"Auto-submit queue: {len(rows)} job(s) · real submission is {'ON' if AUTO_SUBMIT else 'OFF (dry run)'}")
+    for r in rows:
+        print(f"\n--- {r['company']} · {r['title']}")
+        if r["source"] != "greenhouse":
+            print(f"  skipped: {r['source']} isn't supported yet. Apply by hand at {r['url']}")
+            continue
+        try:
+            cmd_apply(r["id"], submit=AUTO_SUBMIT, headed=False)
+        except Exception as e:
+            print(f"  ! failed: {e}")
+            tracker.update(r["id"], notes=f"apply failed: {e}")
+
+
 def cmd_answer() -> None:
     """Ask the user every pending application question once; answers are saved for reuse."""
     from . import applier
@@ -277,12 +297,14 @@ def cmd_answer() -> None:
 
 def cmd_daily(pool: int, n: int) -> None:
     s = Session()
-    print("1/3 Finding jobs…")
+    print("1/4 Finding jobs…")
     cmd_find(top=0)
-    print("\n2/3 Ranking…")
+    print("\n2/4 Ranking…")
     ranked = cmd_rank(pool, s)
-    print("\n3/3 Tailoring the best…")
+    print("\n3/4 Tailoring the best…")
     picked = cmd_next(n, s)
+    print("\n4/4 Applying to the auto-submit queue…")
+    cmd_apply_queue(n)
     path = daily_report(ranked, picked)
     print(f"\nDaily report: {path}\nTracker: {tracker.counts()}")
 
@@ -521,6 +543,9 @@ def main():
     ap_.add_argument("--submit", action="store_true", help="actually submit the application")
     ap_.add_argument("--headed", action="store_true", help="show the browser window")
     sub.add_parser("answer", help="answer application questions the bot couldn't")
+    sub.add_parser("apply-queue", help="apply to the auto-submit queue (dry run unless JOBBOT_AUTO_SUBMIT=true)")
+    ma = sub.add_parser("mark-applied", help="record a job you finished applying to by hand")
+    ma.add_argument("query")
     kn = sub.add_parser("know", help='add skills you have, e.g. know GraphQL "Model Context Protocol (MCP)"')
     kn.add_argument("skills", nargs="+")
     args = ap.parse_args()
@@ -530,6 +555,14 @@ def main():
         return cmd_apply(args.query, args.submit, args.headed)
     if args.cmd == "answer":
         return cmd_answer()
+    if args.cmd == "apply-queue":
+        return cmd_apply_queue()
+    if args.cmd == "mark-applied":
+        r = _find_one(args.query)
+        if r is not None:
+            tracker.update(r["id"], status="applied", notes="applied (confirmed by user)")
+            print(f"Marked applied: {r['company']} · {r['title']}")
+        return
     if args.cmd == "rescore":
         return cmd_rescore()
     if args.cmd == "tailor":

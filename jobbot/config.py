@@ -51,6 +51,9 @@ MAX_PAGES = 2
 # Never listed in any mode: certifications, degrees, languages, years (cv_listable = false).
 GAP_SKILLS_IN_CV = os.getenv("JOBBOT_GAP_SKILLS_IN_CV", "listed")
 
+# Real submission switch. Until this is "true", apply-queue and daily only fill forms + screenshot.
+AUTO_SUBMIT = os.getenv("JOBBOT_AUTO_SUBMIT", "false").lower() == "true"
+
 # Review vs auto-submit: each day's top N tailored jobs (by match score) go to the user for review,
 # the rest go to the auto-submit queue (user's choice, 2026-11-04).
 REVIEW_TOP = int(os.getenv("JOBBOT_REVIEW_TOP", "3"))
