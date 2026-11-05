@@ -5,7 +5,7 @@ from datetime import datetime
 
 import anthropic
 
-from .config import API_KEY, MODEL, PRICES, OUTPUT_DIR
+from .config import API_KEY, MODEL, PRICES, OUTPUT_DIR, FALLBACK_MODELS
 
 _client = None
 
@@ -20,17 +20,20 @@ def client() -> anthropic.Anthropic:
 
 
 def call_json(*, cached_context: str, instructions: str, user: str, schema: dict,
-              effort: str, label: str, max_tokens: int = 32000) -> dict:
+              effort: str, label: str, model: str = MODEL, max_tokens: int = 32000) -> dict:
     """Send one request and return the parsed JSON object.
 
-    `cached_context` (the profile) goes first in the system prompt with a cache breakpoint, so the
-    analyze and tailor calls for the same job (and the next jobs in a batch) reuse it cheaply.
+    `cached_context` (the profile) goes first in the system prompt with a cache breakpoint, so
+    repeated calls in a batch reuse it cheaply (caches are per model).
     """
+    extra = {}
+    if model in FALLBACK_MODELS:
+        # if a safety classifier declines, the API retries on a fallback model
+        extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
     with client().beta.messages.stream(
-        model=MODEL,
+        model=model,
         max_tokens=max_tokens,
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",  # if a safety classifier declines, the API retries on a fallback model
+        **extra,
         system=[
             {"type": "text", "text": cached_context, "cache_control": {"type": "ephemeral"}},
             {"type": "text", "text": instructions},

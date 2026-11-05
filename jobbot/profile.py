@@ -39,7 +39,8 @@ def verified_view(m: dict) -> dict:
         }
         for p in m["projects"]
     ]
-    skills = {cat: [{"name": s["name"], "level": s.get("level", "")} for s in _verified(items)]
+    skills = {cat: [{"name": s["name"], "level": s.get("level", ""),
+                     **({"source": s["source"]} if s.get("source") else {})} for s in _verified(items)]
               for cat, items in m["skills"].items()}
     education = [
         {k: v for k, v in e.items() if k != "confirm"}
