@@ -27,3 +27,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local database
+data/jobs.db
