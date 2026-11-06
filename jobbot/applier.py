@@ -96,11 +96,15 @@ def form_fields(form: dict) -> list[dict]:
 # --------------------------------------------------------------------------- answering
 
 def pick_option(options: list[str], *wanted: str) -> str | None:
-    """Best option label for any of the wanted phrases (exact, then starts-with, then contains)."""
+    """Best option label for any of the wanted phrases (exact, then starts-with, then contains).
+    Whole words only: "No" must not match "...sponsorship or renewal now"."""
     low = [o.lower() for o in options]
     for w in wanted:
-        w = w.lower()
-        for test in (lambda o: o == w, lambda o: o.startswith(w), lambda o: w in o):
+        w = w.lower().strip()
+        if not w:  # a blank answer-bank value must not match every option
+            continue
+        word = re.compile(rf"(?<!\w){re.escape(w)}(?!\w)")
+        for test in (lambda o: o == w, lambda o: word.match(o), lambda o: word.search(o)):
             for o, ol in zip(options, low):
                 if test(ol):
                     return o
@@ -144,6 +148,7 @@ def rule_answer(f: dict, p: dict, ab: dict, company: str) -> str | None:
     if not opts and re.search(r"(which|what) countr(y|ies).*(right|authori[sz]ed|eligible|permi)", label):
         return "Ireland"
     rules = [
+        (r"(what|which) type of (visa|work permit|permit)|visa type", p.get("work_status", "").split(" (")[0] or None),
         (r"sponsor", "No" if ab.get("requires_sponsorship") == "No" else None),
         (r"(authori[sz]ed|eligible|legally|right) to work|work permit|permission to work", "Yes"),
         (r"(based|located|living|reside|live) in (the )?(republic of )?ireland|ireland based", "Yes"),
@@ -389,6 +394,12 @@ def fill(app_plan: dict, folder: Path, submit: bool = False, headed: bool = Fals
             except Exception as e:
                 notes.append(f"{a['label'][:60]}: {str(e).splitlines()[0][:120]}")
 
+        # Education block: on the live form but not in the API. Values are the profile's MSc.
+        for fid, value in (("school--0", "Maynooth"), ("degree--0", "Master's Degree"),
+                           ("discipline--0", "Computer Science")):
+            if _by_id(page, fid).count() and not _select_combo(page, fid, value):
+                notes.append(f"could not set {fid} to {value}")
+
         # GDPR consent for the demographic answers we just gave. Required on the live form, absent from
         # the API. The user chose to answer the EEO questions, so consenting to their processing is theirs.
         demo_answered = any(a.get("label") and re.search(r"gender|race|ethnic|veteran|disab|demograph", a["label"], re.I)
@@ -447,7 +458,13 @@ def _await_result(page, wait_for_user: bool = False) -> tuple[str, list[str]]:
         except Exception:  # the user closed the window (usually right after submitting by hand)
             return "needs_user", ["browser window was closed before the confirmation page; "
                                   "check your email and confirm with `mark-applied`"]
-        if re.search(r"thank you for (applying|your application)|application (has been )?(received|submitted)", body):
+        # The tab title counts too: some confirmation pages only say it there ("Thank you for applying").
+        try:
+            title = page.title().lower()
+        except Exception:
+            title = ""
+        if re.search(r"thank(s| you) for (applying|your application)|application (has been |was )?(received|submitted)",
+                     title + " " + body):
             return "applied", []
         if re.search(r"verification code|security code|check your email", body):
             if wait_for_user:
@@ -467,13 +484,14 @@ def _await_result(page, wait_for_user: bool = False) -> tuple[str, list[str]]:
                 continue
             return "needs_user", ["Greenhouse sent a verification code to your email: re-run with "
                                   "`apply \"<job>\" --submit --headed` and type the code in the window"]
-        m = re.search(r"please accept the terms[^\n]*|this field is required|please (select|enter|complete)[^\n]{0,60}", body)
+        # Not "please select...": that is also ordinary question text on some forms (Stripe).
+        m = re.search(r"please accept the terms[^\n]*|this field is required", body)
         if m:
             return "needs_user", [f"form error after submit: {m.group(0)[:100]}"]
         if page.locator("iframe[src*='recaptcha'][src*='bframe']").count() and \
                 page.locator("iframe[src*='bframe']").first.is_visible():
             return "needs_user", ["CAPTCHA challenge appeared; finish this one by hand"]
-        errs = page.locator("[aria-invalid=true], .error, .field-error").all_inner_texts()
+        errs = page.locator("[aria-invalid=true], .error, .field-error, [class*='helper-text--error']").all_inner_texts()
         if errs and any(e.strip() for e in errs):
             return "needs_user", ["form errors: " + "; ".join(e.strip()[:80] for e in errs if e.strip())[:300]]
         time.sleep(1.5)
