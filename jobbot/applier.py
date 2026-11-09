@@ -298,7 +298,8 @@ def fill(app_plan: dict, folder: Path, submit: bool = False, headed: bool = Fals
     """Fill the form. With submit=True also press Submit and confirm. Returns {status, notes, screenshot}."""
     from playwright.sync_api import sync_playwright
 
-    resume = next(folder.glob("Shelja_Pugaliya_CV_*.pdf"), None)
+    resume = folder / "Shelja_Pugaliya_CV.pdf"
+    resume = resume if resume.exists() else None
     cover = folder / "Cover_Letter.pdf"
     notes = []
     with sync_playwright() as pw:

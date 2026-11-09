@@ -385,7 +385,7 @@ def daily_report(ranked: list[dict], picked: list[dict]) -> Path:
 def _render(out: Path, t: dict, master: dict, a: dict, warnings: list[str],
             added=(), bumped=()) -> None:
     print("  rendering…")
-    stem = f"Shelja_Pugaliya_CV_{_slug(a['company'])}"
+    stem = "Shelja_Pugaliya_CV"  # the job folder already names the company
     cv, pages, notes = render.render_all(render.build_cv(t, master), t["cover_letter"], out, stem)
     (out / "why_here.txt").write_text(render.plain(t["why_here"]), encoding="utf8")
     report = gap_report(a, cv, warnings + notes, pages, added, bumped)
